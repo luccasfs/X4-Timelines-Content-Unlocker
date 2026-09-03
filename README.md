@@ -2,6 +2,7 @@ Description
 Gives you all stars in all Timelines missions and unlocks all Ships, Systems, POI and Faction for your normal game mode.
 
 To see what it actually unlocks access Frequently Asked Questions relating to the X4: Timelines release. https://steamcommunity.com/games/392160/announcements/detail/4179984470687918883
+
 To find where these contents are located in the universe access All Ownerless Ships in X4: Foundations (9.00 Base Game + All DLCs). https://steamcommunity.com/sharedfiles/filedetails/?id=3273256652
 
 Installation instructions
