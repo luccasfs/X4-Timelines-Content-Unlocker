@@ -3,34 +3,45 @@ import strutils
 import times
 
 proc findUserdata(): string =
-  var username = ""
-  if os.existsEnv("USERNAME"):
-    username = os.getEnv("USERNAME")
-  elif os.existsEnv("USER"):
-    username = os.getEnv("USER")
-  
-  if username == "":
-    username = os.getHomeDir().splitPath().tail
-  
-  let basePath = "C:\\Users\\" & username & "\\Documents\\Egosoft\\X4"
-  
-  if not os.dirExists(basePath):
-    echo "ERROR: X4 folder not found at: ", basePath
+  let home = os.getHomeDir()
+  var onedrive = ""
+  if os.existsEnv("OneDrive"):
+    onedrive = os.getEnv("OneDrive")
+  else:
+    onedrive = home / "OneDrive"
+
+  # Lista com todas as variações conhecidas do OneDrive e Desktop aninhado
+  let possiblePaths = [
+    onedrive / "Desktop" / "Documents" / "Egosoft" / "X4",
+    onedrive / "Documents" / "Egosoft" / "X4",
+    home / "Desktop" / "Documents" / "Egosoft" / "X4",
+    home / "Documents" / "Egosoft" / "X4"
+  ]
+
+  var foundBasePath = ""
+  for p in possiblePaths:
+    if os.dirExists(p):
+      foundBasePath = p
+      break
+
+  if foundBasePath == "":
+    echo "ERROR: X4 folder not found in standard or OneDrive paths."
+    echo "Make sure the game is installed and has been run at least once."
     return ""
-  
-  for kind, path in os.walkDir(basePath):
+
+  for kind, path in os.walkDir(foundBasePath):
     if kind == pcDir:
-      let userdata = path & "\\userdata.xml"
+      let userdata = path / "userdata.xml"
       if os.fileExists(userdata):
         return userdata
-  
+
   echo "ERROR: userdata.xml not found in X4 subfolders"
   return ""
 
 proc makeBackup(filePath: string): bool =
   let timestamp = $now().toTime().toUnix()
   let backup = filePath & ".backup_" & timestamp
-  
+
   try:
     os.copyFile(filePath, backup)
     echo "Backup created at: ", backup
@@ -66,19 +77,19 @@ proc extractTagName(line: string): string =
 proc updateTags(content: string, newTags: seq[(string, string)]): string =
   let lines = content.splitLines()
   var existingTags: seq[string] = @[]
-  
+
   # Find existing tags
   for line in lines:
     let tagName = extractTagName(line)
     if tagName.len > 0:
       existingTags.add(tagName)
-  
+
   # Update existing tags
   var newLines: seq[string] = @[]
   for line in lines:
     let tagName = extractTagName(line)
     var found = false
-    
+
     if tagName.len > 0:
       for tag in newTags:
         if tag[0] == tagName:
@@ -86,10 +97,10 @@ proc updateTags(content: string, newTags: seq[(string, string)]): string =
           newLines.add(indentation & tag[1])
           found = true
           break
-    
+
     if not found:
       newLines.add(line)
-  
+
   # Add new tags
   var tagsToAdd: seq[(string, string)] = @[]
   for tag in newTags:
@@ -100,24 +111,24 @@ proc updateTags(content: string, newTags: seq[(string, string)]): string =
         break
     if not exists:
       tagsToAdd.add(tag)
-  
+
   if tagsToAdd.len > 0:
     var rootClosing = -1
     var lastIndentation = "  "
-    
+
     for i, line in newLines.pairs:
       if "</root>" in line:
         rootClosing = i
         break
-      
+
       let tagName = extractTagName(line)
       if tagName.len > 0:
         lastIndentation = getIndentation(line)
-    
+
     var newTagLines: seq[string] = @[]
     for tag in tagsToAdd:
       newTagLines.add(lastIndentation & tag[1])
-    
+
     if rootClosing >= 0:
       var result: seq[string] = @[]
       for i, line in newLines.pairs:
@@ -129,27 +140,27 @@ proc updateTags(content: string, newTags: seq[(string, string)]): string =
     else:
       for newTag in newTagLines:
         newLines.add(newTag)
-  
+
   return newLines.join("\n")
 
 proc main() =
   echo "=".repeat(60)
   echo "X4 Timelines Unlocker"
   echo "=".repeat(60)
-  
+
   let filePath = findUserdata()
   if filePath == "":
     echo "\nPress Enter to exit..."
     discard readLine(stdin)
     return
-  
+
   echo "\nFile found: ", filePath
-  
+
   if not makeBackup(filePath):
     echo "\nPress Enter to exit..."
     discard readLine(stdin)
     return
-  
+
   var content = ""
   try:
     content = readFile(filePath)
@@ -158,7 +169,7 @@ proc main() =
     echo "\nPress Enter to exit..."
     discard readLine(stdin)
     return
-  
+
   var newTags: seq[(string, string)] = @[]
   newTags.add(("firsttimestartmenu", "<firsttimestartmenu>false</firsttimestartmenu>"))
   newTags.add(("timelines_rankings_reset_version", "<timelines_rankings_reset_version>700</timelines_rankings_reset_version>"))
@@ -513,9 +524,9 @@ proc main() =
   newTags.add(("hub_a7s4_complete", "<hub_a7s4_complete>76</hub_a7s4_complete>"))
   newTags.add(("hub_a7s5_complete", "<hub_a7s5_complete>76</hub_a7s5_complete>"))
   newTags.add(("hub_a7s1_complete", "<hub_a7s1_complete>76</hub_a7s1_complete>"))
-  
+
   let updatedContent = updateTags(content, newTags)
-  
+
   try:
     writeFile(filePath, updatedContent)
     echo "\nSUCCESS: userdata.xml updated successfully!"
