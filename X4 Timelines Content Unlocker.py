@@ -1,30 +1,51 @@
 import os
 import shutil
 import re
+import winreg
 from datetime import datetime
 
 def find_userdata():
-    """Find the X4 userdata.xml file"""
-    username = os.environ.get('USERNAME') or os.environ.get('USER')
-    if not username:
-        home = os.path.expanduser('~')
-        username = os.path.basename(home)
-    
-    base_path = os.path.join('C:\\Users', username, 'Documents', 'Egosoft', 'X4')
-    
-    if not os.path.exists(base_path):
-        print(f"ERROR: X4 folder not found at: {base_path}")
-        print("Make sure the game is installed and has been run at least once.")
-        return None
-    
-    # Search for userdata.xml in all subfolders (AccountID)
-    for folder in os.listdir(base_path):
-        full_folder = os.path.join(base_path, folder)
-        if os.path.isdir(full_folder):
-            userdata = os.path.join(full_folder, 'userdata.xml')
-            if os.path.exists(userdata):
-                return userdata
-    
+    """Find the X4 userdata.xml file, supporting OneDrive, nested Desktop folders, and custom locations"""
+    possible_paths = []
+
+    # 1. Tenta pegar a pasta Documents registrada no Windows
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as key:
+            docs_path = winreg.QueryValueEx(key, "Personal")[0]
+            docs_path = os.path.expandvars(docs_path)
+            possible_paths.append(os.path.join(docs_path, 'Egosoft', 'X4'))
+    except Exception:
+        pass
+
+    home = os.path.expanduser('~')
+    onedrive = os.environ.get('OneDrive') or os.path.join(home, 'OneDrive')
+
+    # 2. Lista de caminhos conhecidos (incluindo o caso de Documentos dentro do Desktop)
+    candidate_bases = [
+        os.path.join(onedrive, 'Desktop', 'Documents'),
+        os.path.join(onedrive, 'Documents'),
+        os.path.join(home, 'Desktop', 'Documents'),
+        os.path.join(home, 'Documents'),
+    ]
+
+    for base in candidate_bases:
+        possible_paths.append(os.path.join(base, 'Egosoft', 'X4'))
+
+    # 3. Varre os caminhos e busca a pasta com userdata.xml
+    checked = set()
+    for base_path in possible_paths:
+        if base_path in checked:
+            continue
+        checked.add(base_path)
+
+        if os.path.exists(base_path):
+            for folder in os.listdir(base_path):
+                full_folder = os.path.join(base_path, folder)
+                if os.path.isdir(full_folder):
+                    userdata = os.path.join(full_folder, 'userdata.xml')
+                    if os.path.exists(userdata):
+                        return userdata
+
     print("ERROR: userdata.xml not found in X4 subfolders")
     return None
 
@@ -32,7 +53,7 @@ def make_backup(file_path):
     """Create a backup of the file"""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     backup = f"{file_path}.backup_{timestamp}"
-    
+
     try:
         shutil.copy2(file_path, backup)
         print(f"Backup created at: {backup}")
@@ -50,7 +71,7 @@ def update_tags(content, new_tags):
     """Update existing tags and add new tags, preserving indentation"""
     lines = content.splitlines()
     existing_tags = {}
-    
+
     # First pass: find existing tags and their indentation
     for line in lines:
         match = re.search(r'<([^>]+)>', line)
@@ -58,30 +79,30 @@ def update_tags(content, new_tags):
             tag_name = match.group(1)
             indentation = get_indentation(line)
             existing_tags[tag_name] = indentation
-    
+
     # Second pass: update existing tags
     new_lines = []
     for line in lines:
         match = re.search(r'<([^>]+)>', line)
         if match:
             tag_name = match.group(1)
-            
+
             if tag_name in new_tags:
                 # Preserve original indentation
                 indentation = get_indentation(line)
                 new_lines.append(f"{indentation}{new_tags[tag_name]}")
                 continue
-        
+
         new_lines.append(line)
-    
+
     # Third pass: add tags that don't exist
     tags_to_add = {k: v for k, v in new_tags.items() if k not in existing_tags}
-    
+
     if tags_to_add:
         # Find the indentation of the last tag before </root>
         root_closing = None
         last_indentation = '  '  # Default indentation
-        
+
         for i, line in enumerate(new_lines):
             if '</root>' in line:
                 root_closing = i
@@ -89,37 +110,37 @@ def update_tags(content, new_tags):
             match = re.search(r'<([^>]+)>', line)
             if match:
                 last_indentation = get_indentation(line)
-        
+
         # Add tags with the same indentation as other tags
         new_tag_lines = [f"{last_indentation}{v}" for v in tags_to_add.values()]
-        
+
         if root_closing is not None:
             new_lines = new_lines[:root_closing] + new_tag_lines + new_lines[root_closing:]
         else:
             new_lines.extend(new_tag_lines)
-    
+
     return '\n'.join(new_lines)
 
 def main():
     print("=" * 60)
     print("X4 Timelines Content Unlocker")
     print("=" * 60)
-    
+
     # Find userdata.xml
     file_path = find_userdata()
     if not file_path:
         print("\nPress Enter to exit...")
         input()
         return
-    
+
     print(f"\nFile found: {file_path}")
-    
+
     # Make backup
     if not make_backup(file_path):
         print("\nPress Enter to exit...")
         input()
         return
-    
+
     # Read file
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -129,7 +150,7 @@ def main():
         print("\nPress Enter to exit...")
         input()
         return
-    
+
     # New tags with values (without indentation, it will be added automatically)
     new_tags = {
         'firsttimestartmenu': '<firsttimestartmenu>false</firsttimestartmenu>',
@@ -486,10 +507,10 @@ def main():
         'hub_a7s5_complete': '<hub_a7s5_complete>76</hub_a7s5_complete>',
         'hub_a7s1_complete': '<hub_a7s1_complete>76</hub_a7s1_complete>',
     }
-    
+
     # Update the content
     updated_content = update_tags(content, new_tags)
-    
+
     # Write updated content back
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
